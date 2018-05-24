@@ -44,17 +44,13 @@ int findFirstZero(Eigen::VectorXi v) {
 	return -1;
 }
 
-int findFirstZero(Eigen::VectorXi v) {
-	for (int i = 0; i < v.rows(); i++)
-		if (v[i] == 0)
-			return i;
-	return -1;
-}
 
 void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, std::vector<Eigen::MatrixXd>& subVs, std::vector<Eigen::MatrixXi>& subFs, int bound = 65000) {
 
 	// Plot the mesh
 	//std::vector<igl::opengl::glfw::Viewer> viewers;
+	igl::opengl::glfw::Viewer viewer;
+	int pieces = 0;
 
 	// triangle triangle adjacency
 	Eigen::MatrixXi TT;
@@ -67,6 +63,12 @@ void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, std::vector<Eigen::MatrixXd
 	// face queue
 	std::queue<int> FQ;
 
+	bool isOverSize = false;
+
+	// set of face and vertex for current submesh
+	std::set<int> FS;
+	std::set<int> VS;
+
 	// if there is still face not being discovered.
 	while (!FD.isOnes()) {
 		// find the first non-one
@@ -75,10 +77,6 @@ void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, std::vector<Eigen::MatrixXd
 
 		// visit it
 		FQ.push(curIdx);
-
-		// set of face and vertex for current submesh
-		std::set<int> FS;
-		std::set<int> VS;
 
 		while (!FQ.empty()) {
 			int curFace = FQ.front();
@@ -97,16 +95,51 @@ void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, std::vector<Eigen::MatrixXd
 				// check if already discoved
 				if ((neighbour != -1) && (FD(neighbour) == 0)) {
 					FQ.push(neighbour);
+					FD(neighbour) = 2;
 					//std::cout << neighbour << "\t";
 				}
 				//std::cout << "\n";
 			}
 
 			// check the size of vertices and faces
-			if (FS.size() > bound || VS.size() > bound)
+			if (FS.size() > bound || VS.size() > bound) {
+				isOverSize = true;
 				break;
+			}
 		}
 
+		if (isOverSize) {
+			isOverSize = false;
+
+			// deal with current submesh, turn set of faces to MatrixXd
+			Eigen::MatrixXd subV;
+			Eigen::MatrixXi subF(FS.size(), F.cols());
+			int i = 0;
+			for (std::set<int>::iterator it = FS.begin(); it != FS.end(); ++it, i++) {
+				subF.row(i) = F.row(*it);
+			}
+			Eigen::VectorXi UJ;
+			igl::remove_unreferenced(V, subF, subV, subF, UJ);
+
+			subVs.push_back(subV);
+			subFs.push_back(subF);
+
+			FS.clear();
+			VS.clear();
+
+			// write down
+			 	igl::writeOFF("split" + std::to_string(pieces++) + ".off", subV, subF);
+				std::cout << "split " << pieces << "\n";
+
+			 //Plot the mesh
+				viewer.append_mesh();
+				viewer.data().clear();
+			 	viewer.data().set_mesh(subV, subF);
+				viewer.data().set_colors(Eigen::RowVector3d((double)pieces * 30.0 / 255.0, (double)pieces * 30.0 / 255.0, (double)pieces * 30.0 / 255.0));
+		}
+	}
+
+	if (FS.size() > 0) {
 		// deal with current submesh, turn set of faces to MatrixXd
 		Eigen::MatrixXd subV;
 		Eigen::MatrixXi subF(FS.size(), F.cols());
@@ -119,22 +152,22 @@ void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, std::vector<Eigen::MatrixXd
 
 		subVs.push_back(subV);
 		subFs.push_back(subF);
+
+		FS.clear();
+		VS.clear();
+
 		// write down
-// 		igl::writeOFF("split" + std::to_string(viewers.size()) + ".off", subV, subF);
-// 		std::cout << "split once\n";
+		igl::writeOFF("split" + std::to_string(pieces++) + ".off", subV, subF);
+		std::cout << "split once\n";
 
-		// Plot the mesh
-// 		igl::opengl::glfw::Viewer viewer;
-// 		viewer.data().set_mesh(subV, subF);
-// 		viewers.push_back(viewer);
-
-
+		//Plot the mesh
+		viewer.append_mesh();
+		viewer.data().clear();
+		viewer.data().set_mesh(subV, subF);
+		viewer.data().set_colors(Eigen::RowVector3d((double)pieces * 30.0 / 255.0, (double)pieces * 30.0 / 255.0, (double)pieces * 30.0 / 255.0));
 	}
 
-// 	for each (igl::opengl::glfw::Viewer v in viewers)
-// 	{
-// 		v.launch();
-// 	}
+	viewer.launch();
 }
 
 void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, Eigen::MatrixXd C, std::vector<Eigen::MatrixXd>& subVs, std::vector<Eigen::MatrixXi>& subFs, std::vector<Eigen::MatrixXd>& subCs, int bound /*= 64995*/)
@@ -214,9 +247,11 @@ void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, Eigen::MatrixXd C, std::vec
 int main(int argc, char *argv[])
 {
 	// Load a mesh in OFF format
-	igl::readOFF( "D:\\Projects\\libigl\\tutorial\\shared\\planexy.off", V, F);
+	//igl::readOFF( "D:\\Projects\\libigl\\tutorial\\shared\\fandisk.off", V, F);
+	igl::readOBJ("D:\\Projects\\libigl\\tutorial\\shared\\brokenFace.obj", V, F);
+	std::cout << V.size() << " vertices\t" << F.size() << " faces\n";
 	std::vector<Eigen::MatrixXd> subVs; std::vector<Eigen::MatrixXi> subFs;
-	splitMesh(V, F, subVs, subFs, 20);
+	splitMesh(V, F, subVs, subFs, 5000);
 
 	// Compute per-face normals
 	
