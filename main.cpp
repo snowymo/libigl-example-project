@@ -250,7 +250,7 @@ void splitMesh(Eigen::MatrixXd V, Eigen::MatrixXi F, Eigen::MatrixXd C, std::vec
 	}
 }
 
-void splitMeshMergeApart(Eigen::MatrixXd V, Eigen::MatrixXi F, Eigen::MatrixXd C, std::vector<Eigen::MatrixXd>& subVs, std::vector<Eigen::MatrixXi>& subFs, std::vector<Eigen::MatrixXd>& subCs, int bound /*= 64995*/)
+void splitMeshMergeApart(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, const Eigen::MatrixXd &C, std::vector<Eigen::MatrixXd>& subVs, std::vector<Eigen::MatrixXi>& subFs, std::vector<Eigen::MatrixXd>& subCs, int bound /*= 64995*/)
 {
 	// triangle triangle adjacency
 	Eigen::MatrixXi TT;
@@ -407,9 +407,9 @@ int main(int argc, char *argv[])
 	igl::jet(Z, true, C);
 
 	Eigen::MatrixXd V_source; Eigen::MatrixXi F_source; Eigen::MatrixXd  C_result;
-	Resample(V, F, C, V_source, F_source, C_result);
+	//Resample(V, F, C, V_source, F_source, C_result);
 
-	//splitMesh(V, F, subVs, subFs, 5000);
+	splitMesh(V, F, subVs, subFs, 5000);
 
 	// Compute per-face normals
 	
