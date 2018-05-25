@@ -9,6 +9,9 @@
 #include <set>
 #include <igl/find.h>
 #include <igl/remove_unreferenced.h>
+#include <igl/embree/line_mesh_intersection.h>
+#include <igl/decimate.h>
+#include <igl/jet.h>
 
 Eigen::MatrixXd V;
 Eigen::MatrixXi F;
@@ -349,15 +352,64 @@ void splitMeshMergeApart(Eigen::MatrixXd V, Eigen::MatrixXi F, Eigen::MatrixXd C
 	}
 }
 
+void Resample(const Eigen::MatrixXd & V_target, const Eigen::MatrixXi & F_target, const Eigen::MatrixXd &C_target, Eigen::MatrixXd &V_source, Eigen::MatrixXi &F_source, Eigen::MatrixXd & C_result) {
+	const size_t threshold = 65000;
+	
+	Eigen::VectorXi  J;//??
+	bool ret = igl::decimate(V_target, F_target, 200, V_source, F_source, J);
+	std::cout << "decimate:" << ret << "\n";
+	C_result.resize(V_source.rows(), 3);
+	if (ret) {
+		// Compute per-vertex normals
+		Eigen::MatrixXd N_source;
+		igl::per_vertex_normals(V_source, F_source, N_source);
+		Eigen::MatrixXd FandBary = igl::embree::line_mesh_intersection(V_source, N_source, V_target, F_target);
+/*
+		for vdist0 in vdist0s :
+		new_dist = np.zeros(V.shape[0])
+			fdist = vdist0[F0[ProjF0]] # v dist for verts from projected faces
+			for i, f in enumerate(fdist) :
+				new_dist[i] = np.dot(ProjB[i, :], f) # inner product
+				results.append(new_dist)
+				*/
+
+		// project the *_source to get the color
+		for (int i = 0; i < V_source.rows(); i++) {
+			int faceId = FandBary(i, 0);
+			double b1 = FandBary(i, 1);
+			double b2 = FandBary(i, 2);
+			double b0 = 1 - b1 - b2;
+			std::cout << "face id " << faceId << "\t b0 " << b0 << "\t b1 " << b1 << "\t b2 " << b2 << "\n";
+			Eigen::Vector3d c0 = C_target.row(F_target(faceId, 0));
+			Eigen::Vector3d c1 = C_target.row(F_target(faceId, 1));
+			Eigen::Vector3d c2 = C_target.row(F_target(faceId, 2));
+			Eigen::Vector3d finalc = c0 * b0 + c1 * b1 + c2 * b2;
+			C_result.row(i) = finalc;
+		}
+	}
+	
+}
+
 
 int main(int argc, char *argv[])
 {
 	// Load a mesh in OFF format
 	//igl::readOFF( "D:\\Projects\\libigl\\tutorial\\shared\\fandisk.off", V, F);
-	igl::readOBJ("D:\\Projects\\libigl\\tutorial\\shared\\brokenFace.obj", V, F);
+	//igl::readOBJ("D:\\Projects\\libigl\\tutorial\\shared\\brokenFace.obj", V, F);
+	igl::readOBJ("D:\\Projects\\libigl\\tutorial\\shared\\armadillo.obj", V, F);
 	std::cout << V.size() << " vertices\t" << F.size() << " faces\n";
 	std::vector<Eigen::MatrixXd> subVs; std::vector<Eigen::MatrixXi> subFs;
-	splitMesh(V, F, subVs, subFs, 5000);
+
+
+	//
+	Eigen::VectorXd Z = V.col(2);
+	Eigen::MatrixXd C;
+	igl::jet(Z, true, C);
+
+	Eigen::MatrixXd V_source; Eigen::MatrixXi F_source; Eigen::MatrixXd  C_result;
+	Resample(V, F, C, V_source, F_source, C_result);
+
+	//splitMesh(V, F, subVs, subFs, 5000);
 
 	// Compute per-face normals
 	
@@ -373,11 +425,18 @@ int main(int argc, char *argv[])
 	igl::opengl::glfw::Viewer viewer;
 	viewer.callback_key_down = &key_down;
 	viewer.data().show_lines = false;
-	viewer.data().set_mesh(V, F);
-	viewer.data().set_normals(N_faces);
-	std::cout <<
-		"Press '1' for per-face normals." << std::endl <<
-		"Press '2' for per-vertex normals." << std::endl <<
-		"Press '3' for per-corner normals." << std::endl;
+	viewer.data().set_mesh(V_source, F_source);
+	//viewer.data().set_normals(N_faces);
+	viewer.data().set_colors(C_result);
+
+// 	viewer.append_mesh();
+// 	viewer.data().clear();
+// 	viewer.data().set_mesh(V, F);
+// 	//viewer.data().set_normals(N_faces);
+// 	viewer.data().set_colors(C);
+// 	std::cout <<
+// 		"Press '1' for per-face normals." << std::endl <<
+// 		"Press '2' for per-vertex normals." << std::endl <<
+// 		"Press '3' for per-corner normals." << std::endl;
 	viewer.launch();
 }
